@@ -17,9 +17,7 @@ describe("isDigRef — whole-value reference gate", () => {
 
 describe("toEngineRef — chia:// normalisation", () => {
   it("rewrites the chia:// prefix to the URN grammar, preserving the rest", () => {
-    expect(toEngineRef("chia://store:root/app.js?salt=ff")).toBe(
-      "urn:dig:chia:store:root/app.js?salt=ff",
-    );
+    expect(toEngineRef("chia://store:root/app.js?salt=ff")).toBe("urn:dig:chia:store:root/app.js?salt=ff");
   });
 
   it("leaves an already-URN reference unchanged", () => {

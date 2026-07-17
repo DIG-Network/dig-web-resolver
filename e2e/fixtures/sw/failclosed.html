@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>dig-web-resolver SW e2e — fail-closed</title>
+    <script type="module">
+      // Register the REAL dig-sw.js. With the DIG ladder blocked (see the spec), the
+      // engine resolves `unreachable` and the SW serves a NON-2xx branded page — so
+      // an injected `<script src=/__dig/…>` must NOT execute (fail-closed proof).
+      const reg = await navigator.serviceWorker.register("/dig-sw.js", { scope: "/" });
+      await navigator.serviceWorker.ready;
+      if (!navigator.serviceWorker.controller) {
+        if (!sessionStorage.getItem("dig_reloaded")) {
+          sessionStorage.setItem("dig_reloaded", "1");
+          location.reload();
+        }
+      } else {
+        void reg;
+        window.__digSwReady = true;
+        const script = document.createElement("script");
+        script.src = "/__dig/" + encodeURIComponent("urn:dig:chia:teststore:testroot/evil.js");
+        document.head.appendChild(script);
+
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = "/__dig/" + encodeURIComponent("urn:dig:chia:teststore:testroot/evil.css");
+        document.head.appendChild(link);
+      }
+    </script>
+  </head>
+  <body>
+    <h1 id="heading">dig SW fail-closed</h1>
+  </body>
+</html>

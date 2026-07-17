@@ -13,8 +13,6 @@
 /** True iff a Service Worker currently controls this page (a dig SW, in practice). */
 export function serviceWorkerControlsPage(): boolean {
   return (
-    typeof navigator !== "undefined" &&
-    "serviceWorker" in navigator &&
-    !!navigator.serviceWorker.controller
+    typeof navigator !== "undefined" && "serviceWorker" in navigator && !!navigator.serviceWorker.controller
   );
 }

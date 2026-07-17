@@ -6,12 +6,7 @@
  */
 export { activate, type ActivateOptions, type ActivationHandle } from "./activate";
 export { VERSION } from "./version";
-export {
-  tryClaim,
-  type ClaimSource,
-  type DigWebResolverClaim,
-  type ResolverMode,
-} from "./sentinel";
+export { tryClaim, type ClaimSource, type DigWebResolverClaim, type ResolverMode } from "./sentinel";
 export { type WasmSource } from "./engine";
 
 // Tier 2 — the Service Worker mode. `registerDigSW` is the page-side adoption helper

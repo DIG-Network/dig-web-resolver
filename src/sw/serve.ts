@@ -50,9 +50,12 @@ function headersFor(contentType: string): Headers {
   });
 }
 
-/** Copy engine bytes into a fresh ArrayBuffer-backed view so they satisfy `BodyInit`. */
-function body(bytes: Uint8Array): Uint8Array {
-  return new Uint8Array(bytes);
+/** Copy engine bytes into a fresh `ArrayBuffer` so they satisfy `BodyInit` under
+ *  strict typing (the engine's `Uint8Array` may be backed by a `SharedArrayBuffer`). */
+function body(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
 }
 
 /**
@@ -77,8 +80,7 @@ export async function serveDigRef(engine: ResolveEngine, urn: string): Promise<R
     // integrity_failure / unreachable → the engine's branded text/html page, served
     // under a non-2xx status + its own text/html type + nosniff so the browser will
     // NOT execute/apply it as script or style. Fail-closed: never unverified bytes.
-    const status =
-      result.outcome === "integrity_failure" ? STATUS.integrityFailure : STATUS.unreachable;
+    const status = result.outcome === "integrity_failure" ? STATUS.integrityFailure : STATUS.unreachable;
     return new Response(body(result.bytes), { status, headers: headersFor(result.contentType) });
   }
 

@@ -26,4 +26,9 @@ export default tseslint.config(
     files: ["**/*.test.ts", "e2e/**/*.ts", "scripts/**/*.mjs", "e2e/**/*.mjs", "*.config.*"],
     rules: { "@typescript-eslint/no-explicit-any": "off", "no-console": "off" },
   },
+  {
+    // The hand-written Service Worker e2e fixtures run in a ServiceWorkerGlobalScope.
+    files: ["e2e/fixtures/**/*.js"],
+    languageOptions: { globals: { self: "readonly", Response: "readonly", URL: "readonly" } },
+  },
 );

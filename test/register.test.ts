@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  RELOAD_GUARD_KEY,
-  registerDigSW,
-  shouldReloadToControl,
-} from "../src/sw/register";
+import { RELOAD_GUARD_KEY, registerDigSW, shouldReloadToControl } from "../src/sw/register";
 
 /** Install a fake `navigator.serviceWorker` with the given controller state. */
 function fakeServiceWorker(controller: object | null): { register: ReturnType<typeof vi.fn> } {
@@ -19,6 +15,16 @@ function fakeServiceWorker(controller: object | null): { register: ReturnType<ty
 
 function setSecureContext(value: boolean): void {
   Object.defineProperty(window, "isSecureContext", { configurable: true, value });
+}
+
+/** jsdom's `location.reload` is non-configurable, so replace the whole location. */
+function mockLocationReload(): ReturnType<typeof vi.fn> {
+  const reload = vi.fn();
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { reload },
+  });
+  return reload;
 }
 
 afterEach(() => {
@@ -61,7 +67,7 @@ describe("registerDigSW", () => {
   it("performs a single guarded reload on the first uncontrolled load", async () => {
     setSecureContext(true);
     fakeServiceWorker(null);
-    const reload = vi.spyOn(window.location, "reload").mockImplementation(() => undefined);
+    const reload = mockLocationReload();
 
     const result = await registerDigSW();
 
@@ -74,7 +80,7 @@ describe("registerDigSW", () => {
     setSecureContext(true);
     fakeServiceWorker(null);
     sessionStorage.setItem(RELOAD_GUARD_KEY, "1");
-    const reload = vi.spyOn(window.location, "reload").mockImplementation(() => undefined);
+    const reload = mockLocationReload();
 
     const result = await registerDigSW();
 
@@ -86,7 +92,7 @@ describe("registerDigSW", () => {
   it("honours reloadToControl:false (never reloads)", async () => {
     setSecureContext(true);
     fakeServiceWorker(null);
-    const reload = vi.spyOn(window.location, "reload").mockImplementation(() => undefined);
+    const reload = mockLocationReload();
 
     const result = await registerDigSW({ reloadToControl: false });
 
