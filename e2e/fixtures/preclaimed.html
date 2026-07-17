@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>dig-web-resolver e2e — pre-claimed</title>
+    <!-- A prior loader (or the extension) already claimed the page. The bundle must
+         defer: no scan, no observer, no wasm init. -->
+    <script>
+      window.__digWebResolver = Object.freeze({
+        claimed: true,
+        version: "0.0.0-other",
+        source: "extension",
+        claimedAt: 1,
+      });
+    </script>
+  </head>
+  <body>
+    <img
+      id="dig-image"
+      src="urn:dig:chia:0000000000000000000000000000000000000000000000000000000000000001:0000000000000000000000000000000000000000000000000000000000000002/img/logo.png"
+      alt="dig image"
+    />
+    <script src="/dist/dig-web-resolver.iife.js"></script>
+  </body>
+</html>
