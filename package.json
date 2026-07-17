@@ -1,6 +1,6 @@
 {
   "name": "@dignetwork/dig-web-resolver",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A CDN-droppable <script> that teaches any webpage to resolve urn:dig:chia: and chia:// references in-page, fail-closed, via @dignetwork/dig-urn-resolver.",
   "license": "GPL-2.0-only",
   "author": "DIG Network",
