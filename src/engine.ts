@@ -8,6 +8,7 @@
  * BRANDED engine artifact, never unverified bytes.
  */
 import init, { DigNetwork, type DigNetworkOptions } from "@dignetwork/dig-urn-resolver";
+import { toEngineRef } from "./matcher";
 
 /** How the wasm bytes reach the engine: inlined bytes, a sidecar URL, or a module. */
 export type WasmSource = BufferSource | URL | string | WebAssembly.Module | Response;
@@ -34,19 +35,11 @@ function requireEngine(): DigNetwork {
   return engine;
 }
 
-const CHIA_SCHEME = /^chia:\/\//i;
-
 /**
- * Normalise a DIG reference to the engine's canonical URN grammar. The engine's
- * parser accepts only `urn:dig:chia:<store>[:<root>]/<path>[?salt=…]`; the
- * user-facing `chia://<store>[:<root>]/<path>` scheme is the same locator with a
- * different prefix, so we rewrite it. (Root-pinning is preserved verbatim — a
- * rootless reference stays rootless and is subject to the rpc-tier `RootRequired`
- * rule, see SPEC §Public-read.)
+ * Re-exported for callers that resolve through this wrapper. The normalisation
+ * itself is a pure string rewrite (no wasm) and lives in {@link module:matcher}.
  */
-export function toEngineUrn(ref: string): string {
-  return CHIA_SCHEME.test(ref) ? ref.replace(CHIA_SCHEME, "urn:dig:chia:") : ref;
-}
+export { toEngineRef } from "./matcher";
 
 /**
  * Resolve a DIG reference to a URL for an IMAGE context (`<img>`, `srcset`, icons,
@@ -55,7 +48,7 @@ export function toEngineUrn(ref: string): string {
  * a STATIC branded DIG error image on ANY failure — never the unverified bytes.
  */
 export async function resolveImageUrl(ref: string): Promise<string> {
-  return requireEngine().resolveImageUrl(toEngineUrn(ref));
+  return requireEngine().resolveImageUrl(toEngineRef(ref));
 }
 
 /**
@@ -66,7 +59,7 @@ export async function resolveImageUrl(ref: string): Promise<string> {
  * content or the branded page, never unverified bytes).
  */
 export async function resolveContentUrl(ref: string): Promise<string> {
-  const result = await requireEngine().resolve(toEngineUrn(ref));
+  const result = await requireEngine().resolve(toEngineRef(ref));
   // Copy into a fresh ArrayBuffer-backed view so the bytes satisfy `BlobPart`.
   const blob = new Blob([new Uint8Array(result.bytes)], { type: result.contentType });
   return URL.createObjectURL(blob);

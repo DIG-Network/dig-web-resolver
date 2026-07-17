@@ -13,6 +13,8 @@
 import { containsDigRef, replaceCssUrls, replaceDigRefs } from "./matcher";
 import { resolveContentUrl, resolveImageUrl } from "./engine";
 import { registerContentBlob } from "./blob-registry";
+import { serviceWorkerControlsPage } from "./sw/coexist";
+import { digPathFor } from "./sw/urn-path";
 
 // The elements a scan inspects (links are handled by the click interceptor). The
 // `[style*="url"]` term is deliberately paren-free: a `(` inside an attribute
@@ -40,6 +42,19 @@ async function rewriteContentAttr(el: Element, attr: string): Promise<void> {
   // A content attribute holds a single URL — track the minted blob so it can be
   // revoked when this node is removed or the attribute is later re-pointed.
   registerContentBlob(el, attr, next);
+}
+
+/**
+ * Rewrite a content-context reference to a Tier-2 `/__dig/<urn>` path so the
+ * controlling Service Worker serves it natively (full fidelity — recursive `url()`
+ * inside a served stylesheet resolves). Used INSTEAD of the blob-swap when a dig SW
+ * controls the page, keeping the two tiers disjoint (no double-resolve).
+ */
+async function rewriteToSwPath(el: Element, attr: string): Promise<void> {
+  const value = el.getAttribute(attr);
+  if (!containsDigRef(value)) return;
+  const next = await replaceDigRefs(value!, async (ref) => digPathFor(ref));
+  if (next !== value) el.setAttribute(attr, next);
 }
 
 /** Rewrite DIG `url(...)` refs inside an author-set `style` attribute. */
@@ -82,8 +97,15 @@ async function resolveElement(el: Element): Promise<void> {
       break;
     case "LINK": {
       const rel = (el.getAttribute("rel") ?? "").toLowerCase();
-      // Icons are images; stylesheets and preloads are content bytes.
-      await (rel.includes("icon") ? rewriteImageAttr(el, "href") : rewriteContentAttr(el, "href"));
+      if (rel.includes("icon")) {
+        await rewriteImageAttr(el, "href");
+      } else if (serviceWorkerControlsPage()) {
+        // Tier 2 present: hand stylesheet/preload bytes to the SW via a `/__dig/`
+        // path (full fidelity) rather than blob-swapping them here.
+        await rewriteToSwPath(el, "href");
+      } else {
+        await rewriteContentAttr(el, "href");
+      }
       break;
     }
     case "STYLE":

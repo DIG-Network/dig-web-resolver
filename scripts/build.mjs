@@ -45,6 +45,17 @@ await build({
   format: "esm",
 });
 
+// Tier 2 — the self-hosted module Service Worker (wasm inlined; a site copies this to
+// its own origin and registers it via registerDigSW). Must be an ES module (the SW is
+// registered with `{ type: "module" }`).
+await build({
+  ...shared,
+  entryPoints: [resolve(root, "src/entry/sw.ts")],
+  outfile: resolve(root, "dist/dig-sw.js"),
+  format: "esm",
+  minify: true,
+});
+
 // The sidecar wasm for the external-wasm build.
 const wasmSrc = resolve(root, "node_modules/@dignetwork/dig-urn-resolver/web/dig_urn_resolver_bg.wasm");
 const wasmOut = resolve(root, "dist/dig-web-resolver.wasm");
@@ -58,6 +69,7 @@ writeFileSync(
     `iife (external wasm):   ${kib(resolve(root, "dist/dig-web-resolver.iife.external-wasm.js"))}`,
     `  + sidecar wasm:       ${kib(wasmOut)}`,
     `esm:                    ${kib(resolve(root, "dist/dig-web-resolver.esm.js"))}`,
+    `sw (inline wasm):       ${kib(resolve(root, "dist/dig-sw.js"))}`,
     "",
   ].join("\n"),
 );
