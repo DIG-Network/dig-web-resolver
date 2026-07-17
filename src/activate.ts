@@ -12,6 +12,7 @@ import { type WasmSource, initEngine } from "./engine";
 import { scanSubtree } from "./scanner";
 import { startObserver } from "./observer";
 import { installLinkInterceptor } from "./links";
+import { serviceWorkerControlsPage } from "./sw/coexist";
 import { VERSION } from "./version";
 
 export interface ActivateOptions {
@@ -37,8 +38,11 @@ export interface ActivationHandle {
  *   observer, no wasm init).
  */
 export async function activate(options: ActivateOptions): Promise<ActivationHandle | null> {
-  // (1) Synchronous claim — decided before any await yields the event loop.
-  if (!tryClaim(VERSION, options.source ?? "page")) return null;
+  // (1) Synchronous claim — decided before any await yields the event loop. The mode
+  // records whether a Tier-2 SW controls the page (so the scanner defers content
+  // surfaces to it — see scanner.ts) or the DOM loader owns everything (Tier 1).
+  const mode = serviceWorkerControlsPage() ? "sw" : "dom";
+  if (!tryClaim(VERSION, options.source ?? "page", mode)) return null;
 
   // (2) We own the page: bring up the engine and wire the DOM.
   await initEngine(options.wasm, options.engine);

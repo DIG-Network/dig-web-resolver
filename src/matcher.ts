@@ -16,6 +16,30 @@ export function containsDigRef(value: string | null | undefined): boolean {
   return REF_TOKEN.test(value);
 }
 
+// A DIG reference anchored at the START of the string — the whole value IS a single
+// reference (no surrounding text). Used to gate the Service Worker's `/__dig/<urn>`
+// path: only a value that is ITSELF a dig reference is served; anything else falls
+// through untouched.
+const REF_ANCHORED = /^(?:urn:dig:chia:|chia:\/\/)[A-Za-z0-9\-._~:/?#[\]@!$&'*+;=%]+$/i;
+
+/** True iff the entire value is a single DIG reference (start to end). */
+export function isDigRef(value: string | null | undefined): boolean {
+  return !!value && REF_ANCHORED.test(value);
+}
+
+const CHIA_SCHEME = /^chia:\/\//i;
+
+/**
+ * Normalise a DIG reference to the engine's canonical URN grammar. The engine's
+ * parser accepts only `urn:dig:chia:<store>[:<root>]/<path>[?salt=…]`; the
+ * user-facing `chia://<store>[:<root>]/<path>` scheme is the same locator with a
+ * different prefix, so we swap the prefix and leave everything else (including
+ * root-pinning) verbatim. A value already in URN form is returned unchanged.
+ */
+export function toEngineRef(ref: string): string {
+  return CHIA_SCHEME.test(ref) ? ref.replace(CHIA_SCHEME, "urn:dig:chia:") : ref;
+}
+
 /**
  * Replace every DIG-reference token in `value` using `replace`, leaving all
  * non-DIG text (descriptors, other URLs, surrounding CSS) byte-identical. This is

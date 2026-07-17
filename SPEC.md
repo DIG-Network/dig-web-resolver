@@ -38,6 +38,7 @@ Before ANY wasm or DOM work, SYNCHRONOUSLY:
     claimed: true,
     version: "<pkg semver>",   // this build's version
     source: "page",            // "page" (default embed) | "extension" (WU2 injection)
+    mode: "dom",               // "dom" (DOM loader) | "sw" (a Tier-2 SW controls the page)
     claimedAt: <epoch ms>,
   });
   ```
@@ -52,6 +53,11 @@ Rules (normative):
 - **`source`** records who claimed: a page's own embed (`"page"`, the default) or the
   browser extension injecting the same bundle at `document_start` (`"extension"`, WU2).
   When the extension is present it claims first and the page embed defers.
+- **`mode`** records the active resolution strategy: `"dom"` (the Tier-1 DOM loader
+  owns everything) or `"sw"` (a Tier-2 dig Service Worker controls the page — §10 — so
+  the DOM loader defers `<link rel=stylesheet|preload>`/font content surfaces to it,
+  §4 note). It is computed at claim time from whether a Service Worker controls the
+  page.
 
 ## 4. DOM scan scope
 
@@ -106,9 +112,12 @@ reasons, both binding:
    opaque-origin sandboxed navigation (§6) — never executable content in the host
    origin.
 
-**Escape hatch.** A site author who wants dig-hosted JavaScript calls the engine
-explicitly (`dig.resolve(urn)` via the ESM API) and injects it themselves — that is
-their page and their trust decision. The loader never auto-executes resolved content.
+**Escape hatch.** A site author who wants dig-hosted JavaScript has two sanctioned
+paths, both of which are the author's own trust decision (never the loader's): call
+the engine explicitly (`dig.resolve(urn)` via the ESM API) and inject it themselves;
+or adopt the **Tier-2 Service Worker (§10)**, which serves `/__dig/<urn>` `<script>`/
+stylesheet/font bytes natively. The Tier-1 loader itself never auto-executes resolved
+content.
 
 Also never touched: `<form action>`, `fetch`/`XHR`, and any non-media, non-style,
 non-link target.
@@ -187,7 +196,10 @@ Built from one TypeScript source:
 - `dist/dig-web-resolver.iife.external-wasm.js` + `dist/dig-web-resolver.wasm` — an
   IIFE for size-sensitive embeds; the wasm is a sidecar fetched from next to the script.
 - `dist/dig-web-resolver.esm.js` — ESM for bundler consumers, exposing `activate()`,
-  `VERSION`, `tryClaim`, and types. ESM consumers call `activate({ wasm })` themselves.
+  `VERSION`, `tryClaim`, `registerDigSW`, `installDigServiceWorker`, `serveDigRef`, the
+  `/__dig/` path helpers, and types. ESM consumers call `activate({ wasm })` themselves.
+- `dist/dig-sw.js` — the Tier-2 module Service Worker (§10); the engine wasm is inlined.
+  A site self-hosts this at its own origin and registers it via `registerDigSW()`.
 
 Published as `@dignetwork/dig-web-resolver` (GPL-2.0-only, inherited from the engine).
 
@@ -210,7 +222,94 @@ Content-Security-Policy:
 - `img-src 'self' blob: data:` — the page's own images + the verified image blobs +
   branded error images.
 
-## 10. Conformance
+## 10. Tier 2 — the Service Worker mode (full-fidelity subresources)
+
+The Tier-1 DOM loader cannot resolve `<script>`, `<link rel=stylesheet>`, or fonts:
+the browser fetches those itself at parse time, before an async in-page resolver runs,
+and a `<script>` cannot be re-executed by a late `src` rewrite (§4a). A same-origin
+**Service Worker** intercepts the browser's OWN subresource fetches before the
+network, so it CAN serve decrypted, merkle-verified bytes the browser then executes /
+applies natively. Tier 2 is OPT-IN per origin.
+
+### 10.1 The `/__dig/<url-encoded-urn>` path convention
+
+A Service Worker `fetch` handler fires for http(s) requests in scope, NEVER for a raw
+`urn:`/`chia://` scheme. A dig reference the SW serves MUST therefore be expressed as
+an in-scope http(s) path: `GET /__dig/<encodeURIComponent(urn)>`. `/__dig/` is the
+reserved prefix. The SW:
+
+- intercepts ONLY same-origin `GET` requests whose path is `/__dig/<segment>` where
+  the decoded segment is ITSELF a complete DIG reference (`urn:dig:chia:…` or
+  `chia://…`, normalised to the URN grammar);
+- passes EVERYTHING else through to the network untouched — cross-origin, non-GET,
+  ordinary assets, and `/__dig/` control/asset paths whose segment is NOT a dig
+  reference (e.g. `/__dig/config.json`) or a malformed percent-escape (fail-closed);
+- resolves the reference through the canonical `@dignetwork/dig-urn-resolver` engine
+  (the SAME engine as Tier 1 — no second crypto implementation) and returns the result
+  per §10.3.
+
+A site author writes `<script src="/__dig/…">` / `<link rel=stylesheet href="/__dig/…">`
+/ `@font-face { src: url("/__dig/…") }` directly; when a SW controls the page the
+Tier-1 loader also REWRITES a stylesheet/preload `<link>` whose `href` is a `urn:`/
+`chia://` reference to the `/__dig/` form so the SW serves it (no double-resolve — §4
+note; the two tiers are disjoint).
+
+### 10.2 Adoption — self-hosting (`registerDigSW`)
+
+A Service Worker MUST be same-origin: a CDN snippet cannot register a dig.net SW onto a
+third-party page. Tier 2 is therefore ALWAYS adopt-by-self-hosting — the site copies
+`dig-sw.js` (shipped in the package `dist/`) to its OWN origin and registers it:
+
+- `navigator.serviceWorker.register("/dig-sw.js", { scope: "/", type: "module" })`;
+- secure-context only (HTTPS / `localhost`);
+- on the very first (uncontrolled) load, ONE guarded reload (a `sessionStorage` flag
+  prevents a loop) lets the SW gain control (`clients.claim()`), after which it
+  intercepts the page's own parse-time subresource fetches;
+- `registerDigSW(options?)` performs this and is the documented adoption helper.
+
+`dig-sw.js` is a self-contained module SW with the engine wasm inlined (no second
+fetch). The registration query MAY carry engine `endpoint`/`connectUrl` overrides
+(§5.3); no ambient store pinning is used (each `/__dig/<urn>` is self-contained).
+
+**Honest limitation.** The very first uncontrolled load's parse-time subresources are
+NOT intercepted until the guarded reload takes control. Steady state is full fidelity.
+
+### 10.3 Fail-closed responses (HARD)
+
+The SW surfaces ONLY the engine's verified result; unverified bytes are NEVER served as
+executable/applicable content:
+
+| Engine outcome                                           | SW response                                                |
+| -------------------------------------------------------- | ---------------------------------------------------------- |
+| `success`                                                | `200` + the verified bytes under their real `Content-Type` |
+| `integrity_failure`                                      | `409` + the engine's branded `text/html` page              |
+| `unreachable`                                            | `503` + the engine's branded `text/html` page              |
+| hard error (bad URN / RootRequired over rpc / not found) | `502` + a branded `text/html` body                         |
+
+Every response carries `X-Content-Type-Options: nosniff` and a store `Content-Security-Policy`
+(an SW-synthesized response inherits NO edge CSP, so the SW sets its own). A non-success
+outcome is served under a NON-2xx status with a `text/html` type + `nosniff`, so the
+browser will not execute it as script or apply it as style — fail-closed.
+
+### 10.4 Security boundary (decided)
+
+Serving decrypted `<script>` executes in the HOST origin with full DOM/cookie/storage
+privileges. This is correct on a DEDICATED dig origin (the whole origin IS the store;
+the same-origin policy is the isolation boundary). On a MIXED third-party page it is
+the site author's explicit trust decision — inherent in the fact that they must
+self-host + register the SW. The fail-closed matrix (§10.3) is non-negotiable and
+inherited from the engine: only `success` bytes are ever served; every failure is the
+branded artifact, never unverified plaintext.
+
+### 10.5 Tier interplay (no double-resolve)
+
+The frozen sentinel (§3) carries `mode`. A dig SW serves `<script>` / `<link
+rel=stylesheet>` / fonts; the Tier-1 DOM loader serves `<img>`/media/`url()` (blob
+swap) + `<a>` sandbox. When a SW controls the page the loader rewrites stylesheet/
+preload `<link>` references to `/__dig/` paths (deferring them to the SW) instead of
+blob-swapping. No surface is resolved by both tiers.
+
+## 11. Conformance
 
 - The sentinel MUST claim synchronously before any await, MUST freeze the claim, and
   MUST defer (no side effects) when the page is already claimed.
@@ -222,3 +321,9 @@ Content-Security-Policy:
   reach the DOM.
 - A rootless URN over the rpc tier MUST fail closed (branded); a root-pinned URN MUST
   resolve. `chia://` MUST be normalised to the URN grammar with root-pinning preserved.
+- The Tier-2 Service Worker (§10) MUST intercept ONLY same-origin `GET /__dig/<segment>`
+  requests whose decoded segment is a complete DIG reference, MUST pass everything else
+  through untouched, MUST return verified `success` bytes under their real content type
+  and every other outcome as a NON-2xx branded `text/html` response, and MUST set
+  `X-Content-Type-Options: nosniff` + a store CSP on every response. It MUST NOT serve
+  unverified bytes as executable/applicable content.

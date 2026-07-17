@@ -14,7 +14,15 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
-      exclude: ["src/generated/**", "src/entry/**", "src/**/*.d.ts"],
+      exclude: [
+        "src/generated/**",
+        "src/entry/**",
+        "src/**/*.d.ts",
+        // The SW runtime is the thin ServiceWorkerGlobalScope glue (install/activate/
+        // fetch wiring); its logic lives in the pure modules it composes, which ARE
+        // unit-tested. The real SW is exercised by the Playwright e2e.
+        "src/sw/runtime.ts",
+      ],
       thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },
     },
   },

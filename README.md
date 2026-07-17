@@ -71,6 +71,44 @@ Content-Security-Policy:
   img-src 'self' blob: data:;
 ```
 
+## Full fidelity — the Service Worker tier (`<script>`, stylesheets, fonts)
+
+The one-tag loader above resolves images, media, CSS `url(...)`, and links. It
+**cannot** resolve `<script>`, `<link rel=stylesheet>`, or fonts — the browser fetches
+those itself at parse time, before an in-page resolver runs. For those, adopt **Tier 2**:
+a same-origin Service Worker that intercepts the browser's own subresource fetches and
+serves decrypted, merkle-verified bytes the browser then executes/applies natively.
+
+A Service Worker must be **same-origin**, so Tier 2 is adopt-by-self-hosting:
+
+1. Copy the shipped SW to your origin root:
+   `cp node_modules/@dignetwork/dig-web-resolver/dist/dig-sw.js ./public/dig-sw.js`
+2. Register it once, early, on your page:
+
+   ```js
+   import { registerDigSW } from "@dignetwork/dig-web-resolver";
+   await registerDigSW(); // registers /dig-sw.js at scope "/", HTTPS/localhost only
+   ```
+
+3. Reference dig content on the surfaces the DOM loader can't fix, via the `/__dig/`
+   path (`encodeURIComponent` the URN):
+
+   ```html
+   <script src="/__dig/urn%3Adig%3Achia%3ASTORE%3AROOT%2Fapp.js"></script>
+   <link rel="stylesheet" href="/__dig/urn%3Adig%3Achia%3ASTORE%3AROOT%2Fapp.css" />
+   ```
+
+The SW resolves each through the same engine, fail-closed: a verified success is served
+under its real content type; any failure (tamper, unreachable, rootless-over-rpc) is a
+NON-2xx branded page with `nosniff`, so untrusted bytes NEVER execute.
+
+**Security boundary.** SW-served `<script>` runs in your origin. This is correct for a
+**dedicated dig origin** (the whole origin is the store). On a mixed page it is your own
+trust decision — inherent in the fact that you self-host + register the SW. **First-load
+note:** the very first uncontrolled page load's parse-time subresources aren't
+intercepted until the guarded one-time reload takes control; steady state is full
+fidelity. See [`SPEC.md`](./SPEC.md) §10.
+
 ## What it resolves
 
 `<img src|srcset>`, `<source>` (picture/video/audio), `<video|audio src|poster>`,

@@ -3,17 +3,34 @@ import { tryClaim } from "../src/sentinel";
 
 describe("coexistence sentinel", () => {
   it("claims an unclaimed page and freezes the record", () => {
-    const won = tryClaim("1.2.3", "page", 1000);
+    const won = tryClaim("1.2.3", "page", "dom", 1000);
     expect(won).toBe(true);
     const claim = window.__digWebResolver as Record<string, unknown>;
-    expect(claim).toEqual({ claimed: true, version: "1.2.3", source: "page", claimedAt: 1000 });
+    expect(claim).toEqual({
+      claimed: true,
+      version: "1.2.3",
+      source: "page",
+      mode: "dom",
+      claimedAt: 1000,
+    });
     expect(Object.isFrozen(claim)).toBe(true);
   });
 
+  it("records the resolution mode on the claim (Tier-2 interplay)", () => {
+    expect(tryClaim("1.0.0", "page", "sw", 5)).toBe(true);
+    const claim = window.__digWebResolver as Record<string, unknown>;
+    expect(claim.mode).toBe("sw");
+  });
+
+  it("defaults the mode to dom when omitted", () => {
+    expect(tryClaim("1.0.0", "page")).toBe(true);
+    expect((window.__digWebResolver as Record<string, unknown>).mode).toBe("dom");
+  });
+
   it("defers on a second load — first-to-claim wins, version-agnostic", () => {
-    expect(tryClaim("1.0.0", "extension", 1)).toBe(true);
+    expect(tryClaim("1.0.0", "extension", "dom", 1)).toBe(true);
     // A newer/older second instance must NOT take over.
-    expect(tryClaim("9.9.9", "page", 2)).toBe(false);
+    expect(tryClaim("9.9.9", "page", "dom", 2)).toBe(false);
     const claim = window.__digWebResolver as Record<string, unknown>;
     expect(claim.version).toBe("1.0.0");
     expect(claim.source).toBe("extension");
