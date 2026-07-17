@@ -9,13 +9,6 @@ import { expect, test, type Page } from "@playwright/test";
 //  2. FAIL-CLOSED — the REAL dig-sw.js, with the DIG ladder blocked, serves a NON-2xx
 //     branded page for `/__dig/<urn>`, so an injected `<script>` NEVER executes.
 
-/** A SW registration can outlive one test; unregister so each test starts clean. */
-async function clearServiceWorkers(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    void navigator.serviceWorker?.getRegistrations().then((rs) => rs.forEach((r) => void r.unregister()));
-  });
-}
-
 async function blockDigNetwork(page: Page): Promise<void> {
   for (const host of ["**://rpc.dig.net/**", "**://dig.local/**", "**://localhost:9778/**"]) {
     await page.route(host, (route) => route.abort());
@@ -23,7 +16,6 @@ async function blockDigNetwork(page: Page): Promise<void> {
 }
 
 test("SW serves a decrypted <script> that EXECUTES and a stylesheet that APPLIES", async ({ page }) => {
-  await clearServiceWorkers(page);
   await page.goto("/e2e/fixtures/sw/success.html");
 
   // The injected `<script src=/__dig/…app.js>` is served by the controlling SW and
@@ -41,11 +33,10 @@ test("SW serves a decrypted <script> that EXECUTES and a stylesheet that APPLIES
 test("fail-closed: the real SW serves a NON-2xx branded page and the <script> does NOT execute", async ({
   page,
 }) => {
-  await clearServiceWorkers(page);
   await blockDigNetwork(page);
   await page.goto("/e2e/fixtures/sw/failclosed.html");
 
-  // Wait for the real dig-sw.js to control the page (after the guarded reload).
+  // Wait for the real dig-sw.js to control the page.
   await page.waitForFunction(() => (window as { __digSwReady?: boolean }).__digSwReady === true, {
     timeout: 20_000,
   });

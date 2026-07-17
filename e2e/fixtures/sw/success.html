@@ -5,26 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>dig-web-resolver SW e2e — native execution</title>
     <script type="module">
-      // Register the success-emulator SW, gain control (guarded one-time reload),
-      // then inject dig subresources so the controlling SW serves them natively.
-      const reg = await navigator.serviceWorker.register("/success-sw.js", { scope: "/" });
+      // Register the success-emulator SW and wait until it CONTROLS this client (the
+      // SW calls clients.claim() on activate → a controllerchange event), then inject
+      // dig subresources so the controlling SW serves them natively. Waiting on
+      // controllerchange is deterministic — no reload-timing race.
+      await navigator.serviceWorker.register("/success-sw.js", { scope: "/" });
       await navigator.serviceWorker.ready;
       if (!navigator.serviceWorker.controller) {
-        if (!sessionStorage.getItem("dig_reloaded")) {
-          sessionStorage.setItem("dig_reloaded", "1");
-          location.reload();
-        }
-      } else {
-        void reg;
-        const script = document.createElement("script");
-        script.src = "/__dig/" + encodeURIComponent("urn:dig:chia:teststore:testroot/app.js");
-        document.head.appendChild(script);
-
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = "/__dig/" + encodeURIComponent("urn:dig:chia:teststore:testroot/app.css");
-        document.head.appendChild(link);
+        await new Promise((resolve) =>
+          navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true }),
+        );
       }
+
+      const script = document.createElement("script");
+      script.src = "/__dig/" + encodeURIComponent("urn:dig:chia:teststore:testroot/app.js");
+      document.head.appendChild(script);
+
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "/__dig/" + encodeURIComponent("urn:dig:chia:teststore:testroot/app.css");
+      document.head.appendChild(link);
     </script>
   </head>
   <body>
