@@ -5,6 +5,7 @@
  * own guards (§scanner) make re-observing a just-resolved node a no-op.
  */
 import { scanSubtree } from "./scanner";
+import { revokeSubtree } from "./blob-registry";
 
 /** The attributes worth reacting to — the union of every scanned attribute. */
 const WATCHED_ATTRIBUTES = ["src", "srcset", "href", "poster", "style", "rel"];
@@ -16,6 +17,10 @@ export function startObserver(root: Node = document): MutationObserver {
       if (record.type === "childList") {
         record.addedNodes.forEach((node) => {
           if (node instanceof Element) scanSubtree(node);
+        });
+        // Free any content blob URLs minted for nodes leaving the document.
+        record.removedNodes.forEach((node) => {
+          if (node instanceof Element) revokeSubtree(node);
         });
       } else if (record.type === "attributes" && record.target instanceof Element) {
         scanSubtree(record.target);

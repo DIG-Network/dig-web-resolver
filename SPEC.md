@@ -118,6 +118,17 @@ longer matches a DIG reference, so a re-scan of the same node is a no-op; an
 `inFlight` set additionally prevents concurrent double-resolution, and a rewrite is
 applied only when the value actually changes (no mutation loops).
 
+**Blob-URL lifecycle (no leaks).** Content/media resolution (`<video|audio src>`,
+non-picture `<source>`, `<link rel=stylesheet|preload>`) MINTS a `blob:` URL via
+`URL.createObjectURL`, which pins the blob until revoked. The loader tracks each such
+minted URL per node and MUST `URL.revokeObjectURL` it when (a) the node is REMOVED from
+the document (the observer's `removedNodes` branch, including a removed subtree's
+content descendants), or (b) the attribute is RE-POINTED to a new reference (the stale
+blob is revoked as the new one is minted) — so a long-lived SPA that swaps DIG media
+does not leak blobs for the document lifetime. Image blobs come from the engine's
+`resolveImageUrl` (engine-owned/cached — not minted here); link-viewer blobs are
+revoked on the sandbox close path (§6).
+
 ## 5. Public-read model + the ROOT-PINNED requirement (HARD)
 
 The engine derives the read/decrypt key FROM THE URN (retrieval key =
@@ -144,12 +155,15 @@ no-node visitors — fail-closed, never a broken or spoofable image.
 
 A click on an `<a href>` whose target is a DIG reference is intercepted in the CAPTURE
 phase: the host navigation is cancelled (`preventDefault`) and the verified content is
-shown inside a SANDBOXED `<iframe>` whose `sandbox` OMITS `allow-same-origin`, so the
-frame runs in an opaque origin fully isolated from the host page (no host DOM, cookies,
-or storage access). The content is loaded from a `blob:` URL built from the engine's
-verified bytes — NEVER via `innerHTML`, NEVER `eval`, NEVER the host origin. The viewer
-always offers an escape hatch (close button, Escape key, backdrop click) and revokes
-the object URL on close.
+shown inside a SANDBOXED `<iframe>` whose `sandbox` is EXACTLY `allow-scripts` — and
+nothing else. Omitting `allow-same-origin` makes the frame an opaque origin fully
+isolated from the host page (no host DOM, cookies, or storage access); omitting
+`allow-popups` and `allow-forms` denies the verified-but-untrusted content any outward
+reach (it cannot open popups or POST forms to external endpoints — the phishing /
+exfiltration vector), while `allow-scripts` lets a resolved dig app render. The content
+is loaded from a `blob:` URL built from the engine's verified bytes — NEVER via
+`innerHTML`, NEVER `eval`, NEVER the host origin. The viewer always offers an escape
+hatch (close button, Escape key, backdrop click) and revokes the object URL on close.
 
 ## 7. Fail-closed matrix
 
@@ -179,12 +193,22 @@ Published as `@dignetwork/dig-web-resolver` (GPL-2.0-only, inherited from the en
 
 ## 9. Required embed CSP
 
-A page embedding the loader must allow:
+A page embedding the loader must allow (this is byte-identical to the copy-paste
+snippet in the README):
 
-- `script-src 'wasm-unsafe-eval'` — to instantiate the engine wasm.
+```
+Content-Security-Policy:
+  script-src 'self' 'wasm-unsafe-eval';
+  connect-src https://dig.local https://localhost:9778 https://rpc.dig.net;
+  img-src 'self' blob: data:;
+```
+
+- `script-src 'self' 'wasm-unsafe-eval'` — the loader script itself + instantiating the
+  engine wasm.
 - `connect-src https://dig.local https://localhost:9778 https://rpc.dig.net` — the
   §5.3 ladder tiers the engine probes/fetches.
-- `img-src blob: data:` — the verified image blobs + branded error images.
+- `img-src 'self' blob: data:` — the page's own images + the verified image blobs +
+  branded error images.
 
 ## 10. Conformance
 

@@ -2,10 +2,13 @@
  * Opaque-origin viewer for resolved DIG link content.
  *
  * A `chia://` / `urn:dig:chia:` link never navigates the host page. Instead the
- * verified content is shown inside a SANDBOXED `<iframe>` whose sandbox lacks
- * `allow-same-origin`, so the frame runs in an opaque origin fully isolated from
- * the host — it can neither read the host DOM nor its cookies/storage. The content
- * is loaded from a `blob:` URL (never `innerHTML`, never `eval`).
+ * verified content is shown inside a SANDBOXED `<iframe>` whose sandbox grants ONLY
+ * `allow-scripts` — no `allow-same-origin` (so the frame is an opaque origin, unable
+ * to touch the host DOM/cookies/storage), and deliberately NO `allow-popups` /
+ * `allow-forms`: resolved content is merkle-verified but still UNTRUSTED, and popups
+ * + form submission would let it phish or exfiltrate what a user types to arbitrary
+ * external endpoints. Dig content needs scripts to render, not to POST outward. The
+ * content is loaded from a `blob:` URL (never `innerHTML`, never `eval`).
  *
  * The overlay always offers an escape hatch (a close button, the Escape key, and a
  * backdrop click), so the user is never trapped (professional-ui HARD RULE).
@@ -75,8 +78,9 @@ function buildToolbar(blobUrl: string): HTMLElement {
 function buildFrame(blobUrl: string, label: string): HTMLIFrameElement {
   const frame = document.createElement("iframe");
   frame.title = `DIG content: ${label}`;
-  // No `allow-same-origin` ⇒ opaque origin, isolated from the host page.
-  frame.setAttribute("sandbox", "allow-scripts allow-popups allow-forms");
+  // ONLY `allow-scripts`: opaque origin (no allow-same-origin) AND no outward reach
+  // (no allow-popups / allow-forms) — see the module doc-comment.
+  frame.setAttribute("sandbox", "allow-scripts");
   frame.setAttribute("referrerpolicy", "no-referrer");
   frame.style.cssText = "flex:1;width:100%;border:0;background:#fff";
   frame.src = blobUrl;

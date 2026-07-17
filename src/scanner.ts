@@ -12,6 +12,7 @@
  */
 import { containsDigRef, replaceCssUrls, replaceDigRefs } from "./matcher";
 import { resolveContentUrl, resolveImageUrl } from "./engine";
+import { registerContentBlob } from "./blob-registry";
 
 // The elements a scan inspects (links are handled by the click interceptor). The
 // `[style*="url"]` term is deliberately paren-free: a `(` inside an attribute
@@ -34,7 +35,11 @@ async function rewriteContentAttr(el: Element, attr: string): Promise<void> {
   const value = el.getAttribute(attr);
   if (!containsDigRef(value)) return;
   const next = await replaceDigRefs(value!, resolveContentUrl);
-  if (next !== value) el.setAttribute(attr, next);
+  if (next === value) return;
+  el.setAttribute(attr, next);
+  // A content attribute holds a single URL — track the minted blob so it can be
+  // revoked when this node is removed or the attribute is later re-pointed.
+  registerContentBlob(el, attr, next);
 }
 
 /** Rewrite DIG `url(...)` refs inside an author-set `style` attribute. */

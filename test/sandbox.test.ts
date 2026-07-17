@@ -4,13 +4,12 @@ import { openInSandbox } from "../src/sandbox";
 afterEach(() => document.getElementById("dig-web-resolver-overlay")?.remove());
 
 describe("opaque-origin sandbox viewer", () => {
-  it("mounts an iframe whose sandbox is opaque (no allow-same-origin) and loads the blob", () => {
+  it("mounts an iframe sandboxed to EXACTLY allow-scripts (opaque, no outward reach)", () => {
     openInSandbox("blob:content", "chia://store/page");
     const overlay = document.getElementById("dig-web-resolver-overlay")!;
     const frame = overlay.querySelector("iframe")!;
-    const sandbox = frame.getAttribute("sandbox")!;
-    expect(sandbox).not.toContain("allow-same-origin");
-    expect(sandbox).toContain("allow-scripts");
+    // Exact token set: scripts to render, but no same-origin, no popups, no forms.
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
     expect(frame.getAttribute("src")).toBe("blob:content");
     expect(overlay.getAttribute("role")).toBe("dialog");
   });
