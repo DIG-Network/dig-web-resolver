@@ -1,0 +1,36 @@
+# Publish @dignetwork/dig-web-resolver to npm when a vX.Y.Z tag is pushed (the tag is
+# cut by release.yml on merge, per CLAUDE.md §3.6 non-apps per-merge model), or on
+# manual dispatch. Auth uses the org-level NPM_TOKEN secret.
+name: publish-npm
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: build + npm publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+      - run: npm ci
+      - name: Build bundles + types
+        run: npm run build
+      - name: Publish to npmjs
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

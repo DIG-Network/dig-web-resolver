@@ -1,0 +1,55 @@
+# The Node quality-gate set (CLAUDE.md §2.4a): format, lint, typecheck, unit tests +
+# coverage (≥80%), build (all bundles), and a real-browser Playwright e2e. Every check
+# is required before merge once the orchestrator marks them required post-merge.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Format · lint · typecheck · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Format check
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests + coverage (≥80%)
+        run: npm test
+      - name: Build (both IIFE bundles + ESM)
+        run: npm run build
+
+  e2e:
+    name: Playwright e2e (real browser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run e2e
+        run: npm run test:e2e
